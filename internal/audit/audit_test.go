@@ -38,7 +38,9 @@ func TestEvaluateDoesNotAcceptLookalikes(t *testing.T) {
 		"third_party/LICENSE",
 		"gitignore",
 		".github/workflows/notes.txt",
+		".github/workflows/archive/old.yml",
 		"tests/fixture.json",
+		"notes.test.txt",
 		"security/policy.md",
 		"notes/contributing.md",
 		".github/pull_request_template.txt",
@@ -81,7 +83,7 @@ func TestTestFileConventions(t *testing.T) {
 			t.Errorf("isTestFile(%q) = false, want true", filePath)
 		}
 	}
-	for _, filePath := range []string{"tests/fixture.json", "contest.go", "latest.py"} {
+	for _, filePath := range []string{"tests/fixture.json", "contest.go", "latest.py", "notes.test.txt"} {
 		if isTestFile(filePath) {
 			t.Errorf("isTestFile(%q) = true, want false", filePath)
 		}

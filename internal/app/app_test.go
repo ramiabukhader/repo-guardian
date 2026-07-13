@@ -36,3 +36,14 @@ func TestRunRejectsTooManyArguments(t *testing.T) {
 		t.Fatalf("stderr = %q, want usage", stderr.String())
 	}
 }
+
+func TestQuotePathsEscapesTerminalControlCharacters(t *testing.T) {
+	t.Parallel()
+	got := quotePaths([]string{"safe.md", "bad\x1b[31m.md"})
+	if strings.ContainsRune(got, '\x1b') {
+		t.Fatalf("quotePaths() emitted a raw escape character: %q", got)
+	}
+	if !strings.Contains(got, `bad\x1b[31m.md`) {
+		t.Fatalf("quotePaths() = %q, want escaped path", got)
+	}
+}

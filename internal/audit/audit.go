@@ -91,7 +91,7 @@ func isLicense(filePath string) bool {
 
 func isCIWorkflow(filePath string) bool {
 	extension := path.Ext(filePath)
-	return strings.HasPrefix(filePath, ".github/workflows/") && (extension == ".yml" || extension == ".yaml")
+	return path.Dir(filePath) == ".github/workflows" && (extension == ".yml" || extension == ".yaml")
 }
 
 func isTestFile(filePath string) bool {
@@ -102,12 +102,21 @@ func isTestFile(filePath string) bool {
 		return true
 	}
 	for _, marker := range []string{".test.", ".spec."} {
-		if strings.Contains(base, marker) {
+		if strings.Contains(base, marker) && isScriptTestExtension(extension) {
 			return true
 		}
 	}
 	return (extension == ".java" && strings.HasSuffix(strings.TrimSuffix(base, extension), "test")) ||
 		(extension == ".cs" && strings.HasSuffix(strings.TrimSuffix(base, extension), "tests"))
+}
+
+func isScriptTestExtension(extension string) bool {
+	switch extension {
+	case ".cjs", ".js", ".jsx", ".mjs", ".ts", ".tsx":
+		return true
+	default:
+		return false
+	}
 }
 
 func isSecurityPolicy(filePath string) bool {
