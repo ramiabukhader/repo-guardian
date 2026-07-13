@@ -24,6 +24,9 @@ func TestRunScansProvidedDirectory(t *testing.T) {
 	if !strings.Contains(stdout.String(), "Health checks: 1/8") || !strings.Contains(stdout.String(), "[PASS] README") {
 		t.Fatalf("health output missing: %q", stdout.String())
 	}
+	if !strings.Contains(stdout.String(), "Risks: 0 (Git tracking unavailable)") {
+		t.Fatalf("risk output missing: %q", stdout.String())
+	}
 }
 
 func TestRunRejectsTooManyArguments(t *testing.T) {

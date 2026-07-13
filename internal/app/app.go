@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/ramiabukhader/repo-guardian/internal/audit"
+	"github.com/ramiabukhader/repo-guardian/internal/risk"
 	"github.com/ramiabukhader/repo-guardian/internal/scanner"
 )
 
@@ -52,6 +53,28 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "  [%s] %s", status, check.Label)
 		if len(check.Evidence) > 0 {
 			fmt.Fprintf(stdout, ": %s", quotePaths(check.Evidence))
+		}
+		fmt.Fprintln(stdout)
+	}
+
+	tracked, trackingAvailable, err := risk.DiscoverTracked(result.Root)
+	if err != nil {
+		fmt.Fprintf(stderr, "repo-guardian: %v\n", err)
+		return 2
+	}
+	findings := risk.Detect(result, tracked, risk.Options{})
+	fmt.Fprintf(stdout, "Risks: %d", len(findings))
+	if !trackingAvailable {
+		fmt.Fprint(stdout, " (Git tracking unavailable)")
+	}
+	fmt.Fprintln(stdout)
+	for _, finding := range findings {
+		fmt.Fprintf(stdout, "  [%s] %s", finding.Kind, quotePaths([]string{finding.Path}))
+		if finding.Size > 0 {
+			fmt.Fprintf(stdout, " (%d bytes)", finding.Size)
+		}
+		if finding.Tracked {
+			fmt.Fprint(stdout, " (tracked)")
 		}
 		fmt.Fprintln(stdout)
 	}
