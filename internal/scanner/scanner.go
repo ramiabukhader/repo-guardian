@@ -125,7 +125,7 @@ func Scan(root string) (Result, error) {
 
 // Classify assigns a category using only a file's relative path.
 func Classify(relativePath string) Category {
-	normalized := strings.ToLower(filepath.ToSlash(relativePath))
+	normalized := strings.ToLower(strings.ReplaceAll(filepath.ToSlash(relativePath), "\\", "/"))
 	base := filepath.Base(normalized)
 	extension := filepath.Ext(base)
 

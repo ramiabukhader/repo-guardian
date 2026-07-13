@@ -29,6 +29,18 @@ func TestClassify(t *testing.T) {
 	}
 }
 
+func TestClassifyPortableSeparators(t *testing.T) {
+	t.Parallel()
+	for _, filePath := range []string{
+		".github/workflows/ci.yml",
+		`.github\workflows\ci.yml`,
+	} {
+		if got := Classify(filePath); got != CategoryCI {
+			t.Errorf("Classify(%q) = %q, want %q", filePath, got, CategoryCI)
+		}
+	}
+}
+
 func TestScanTraversesAndIgnoresDirectories(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
