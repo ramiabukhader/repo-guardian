@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 
+	"github.com/ramiabukhader/repo-guardian/internal/audit"
 	"github.com/ramiabukhader/repo-guardian/internal/scanner"
 )
 
@@ -37,6 +39,20 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	sort.Strings(categories)
 	for _, category := range categories {
 		fmt.Fprintf(stdout, "  %s: %d\n", category, result.CountByCategory[scanner.Category(category)])
+	}
+
+	health := audit.Evaluate(result)
+	fmt.Fprintf(stdout, "Health checks: %d/%d\n", health.Passed, health.Total)
+	for _, check := range health.Checks {
+		status := "MISSING"
+		if check.Passed {
+			status = "PASS"
+		}
+		fmt.Fprintf(stdout, "  [%s] %s", status, check.Label)
+		if len(check.Evidence) > 0 {
+			fmt.Fprintf(stdout, ": %s", strings.Join(check.Evidence, ", "))
+		}
+		fmt.Fprintln(stdout)
 	}
 	return 0
 }
