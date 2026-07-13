@@ -3,6 +3,7 @@ package scanner
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"testing"
 )
@@ -95,6 +96,35 @@ func TestScanRejectsInvalidRoots(t *testing.T) {
 	}
 	if _, err := Scan(file); err == nil {
 		t.Fatal("Scan() error = nil, want non-directory error")
+	}
+}
+
+func TestScanWithOptionsExcludesPortablePaths(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeFixture(t, root, "keep.go", "package keep")
+	writeFixture(t, root, "generated/code.go", "package generated")
+	writeFixture(t, root, "nested/cache.tmp", "fixture")
+
+	result, err := ScanWithOptions(root, Options{ExcludePatterns: []string{"generated", `nested\*.tmp`}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || result.Files[0].Path != "keep.go" {
+		t.Fatalf("Files = %#v", result.Files)
+	}
+	want := []string{"generated", "nested/cache.tmp"}
+	if !reflect.DeepEqual(result.ExcludedPaths, want) {
+		t.Fatalf("ExcludedPaths = %#v, want %#v", result.ExcludedPaths, want)
+	}
+}
+
+func TestNormalizeExcludePatternRejectsUnsafePaths(t *testing.T) {
+	t.Parallel()
+	for _, patternValue := range []string{"", "../outside", `..\outside`, `C:\outside`, filepath.Join(t.TempDir(), "absolute"), "[bad"} {
+		if _, err := NormalizeExcludePattern(patternValue); err == nil {
+			t.Errorf("NormalizeExcludePattern(%q) error = nil", patternValue)
+		}
 	}
 }
 

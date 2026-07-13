@@ -27,6 +27,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	minimumScore := flags.Int("min-score", 0, "minimum acceptable health score (0-100)")
 	failOnRisk := flags.Bool("fail-on-risk", false, "exit 1 when any risk is found")
 	configPath := flags.String("config", "", "path to a JSON configuration file")
+	var exclusions excludeValues
+	flags.Var(&exclusions, "exclude", "repository-relative exclusion pattern (repeatable)")
 	flags.Usage = func() {
 		fmt.Fprintln(stderr, "usage: repo-guardian [flags] [path]")
 		flags.PrintDefaults()
@@ -71,6 +73,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		if config.FailOnRisk != nil && !explicit["fail-on-risk"] {
 			*failOnRisk = *config.FailOnRisk
 		}
+		if config.Exclude != nil && !explicit["exclude"] {
+			exclusions = append(excludeValues(nil), (*config.Exclude)...)
+		}
 	}
 	if *format != "human" && *format != "json" {
 		fmt.Fprintf(stderr, "repo-guardian: unsupported format %q\n", *format)
@@ -84,8 +89,16 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "repo-guardian: --min-score must be between 0 and 100")
 		return 2
 	}
+	for index, patternValue := range exclusions {
+		normalized, err := scanner.NormalizeExcludePattern(patternValue)
+		if err != nil {
+			fmt.Fprintf(stderr, "repo-guardian: exclude[%d]: %v\n", index, err)
+			return 2
+		}
+		exclusions[index] = normalized
+	}
 
-	scan, err := scanner.Scan(root)
+	scan, err := scanner.ScanWithOptions(root, scanner.Options{ExcludePatterns: exclusions})
 	if err != nil {
 		fmt.Fprintf(stderr, "repo-guardian: %v\n", err)
 		return 2
@@ -120,6 +133,10 @@ func writeHuman(output io.Writer, scan scanner.Result, document report.Document)
 	fmt.Fprintf(output, "Repository: %q\n", scan.Root)
 	fmt.Fprintf(output, "Files scanned: %d\n", len(scan.Files))
 	fmt.Fprintf(output, "Total size: %d bytes\n", scan.TotalSize)
+	fmt.Fprintf(output, "Excluded paths: %d\n", len(scan.ExcludedPaths))
+	for _, excluded := range scan.ExcludedPaths {
+		fmt.Fprintf(output, "  excluded: %s\n", strconv.Quote(excluded))
+	}
 
 	categories := make([]string, 0, len(scan.CountByCategory))
 	for category := range scan.CountByCategory {
@@ -164,6 +181,21 @@ func writeHuman(output io.Writer, scan scanner.Result, document report.Document)
 		document.Score.HealthPoints,
 		document.Score.RiskHygienePoints,
 	)
+}
+
+type excludeValues []string
+
+func (values *excludeValues) String() string {
+	return strings.Join(*values, ",")
+}
+
+func (values *excludeValues) Set(value string) error {
+	normalized, err := scanner.NormalizeExcludePattern(value)
+	if err != nil {
+		return err
+	}
+	*values = append(*values, normalized)
+	return nil
 }
 
 func quotePaths(paths []string) string {

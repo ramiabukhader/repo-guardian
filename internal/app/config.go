@@ -11,10 +11,11 @@ import (
 const defaultConfigName = ".repo-guardian.json"
 
 type fileConfig struct {
-	Format             *string `json:"format"`
-	LargeFileThreshold *int64  `json:"large_file_threshold"`
-	MinimumScore       *int    `json:"min_score"`
-	FailOnRisk         *bool   `json:"fail_on_risk"`
+	Format             *string   `json:"format"`
+	LargeFileThreshold *int64    `json:"large_file_threshold"`
+	MinimumScore       *int      `json:"min_score"`
+	FailOnRisk         *bool     `json:"fail_on_risk"`
+	Exclude            *[]string `json:"exclude"`
 }
 
 func loadConfig(path string, required bool) (fileConfig, bool, error) {
