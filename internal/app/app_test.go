@@ -69,6 +69,92 @@ func TestRunValidatesConfigurationFlags(t *testing.T) {
 	}
 }
 
+func TestRunLoadsRepositoryConfiguration(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	config := `{"format":"json","min_score":100,"fail_on_risk":true,"large_file_threshold":2}`
+	if err := os.WriteFile(filepath.Join(root, defaultConfigName), []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "large.bin"), []byte("123"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{root}, &stdout, &stderr); code != 1 {
+		t.Fatalf("Run() code = %d, want policy failure 1; stderr = %q", code, stderr.String())
+	}
+	var document report.Document
+	if err := json.Unmarshal(stdout.Bytes(), &document); err != nil {
+		t.Fatalf("configured JSON output invalid: %v: %q", err, stdout.String())
+	}
+	foundLargeFile := false
+	for _, finding := range document.Risks {
+		foundLargeFile = foundLargeFile || finding.Path == "large.bin"
+	}
+	if !foundLargeFile {
+		t.Fatalf("configured threshold not applied: %#v", document.Risks)
+	}
+}
+
+func TestRunExplicitFlagsOverrideConfiguration(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	configPath := filepath.Join(root, "policy with spaces.json")
+	config := `{"format":"json","min_score":100,"fail_on_risk":true}`
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	args := []string{"--config", configPath, "--format", "human", "--min-score", "0", "--fail-on-risk=false", root}
+	if code := Run(args, &stdout, &stderr); code != 0 {
+		t.Fatalf("Run() code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Repository:") || strings.HasPrefix(strings.TrimSpace(stdout.String()), "{") {
+		t.Fatalf("explicit human format not applied: %q", stdout.String())
+	}
+}
+
+func TestRunRejectsInvalidConfigurationFiles(t *testing.T) {
+	t.Parallel()
+	tests := map[string]string{
+		"unknown field":  `{"min_socre":80}`,
+		"trailing value": `{} {}`,
+		"invalid range":  `{"min_score":101}`,
+		"invalid type":   `{"fail_on_risk":"yes"}`,
+		"null document":  `null`,
+	}
+	for name, contents := range tests {
+		name, contents := name, contents
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			path := filepath.Join(root, "policy.json")
+			if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var stdout, stderr bytes.Buffer
+			if code := Run([]string{"--config", path, root}, &stdout, &stderr); code != 2 {
+				t.Fatalf("Run() code = %d, want 2; stderr = %q", code, stderr.String())
+			}
+			if !strings.Contains(stderr.String(), "configuration") && name != "invalid range" {
+				t.Fatalf("stderr = %q, want configuration context", stderr.String())
+			}
+		})
+	}
+}
+
+func TestRunRejectsMissingExplicitConfiguration(t *testing.T) {
+	t.Parallel()
+	missing := filepath.Join(t.TempDir(), "missing.json")
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--config", missing, t.TempDir()}, &stdout, &stderr); code != 2 {
+		t.Fatalf("Run() code = %d, want 2", code)
+	}
+	if !strings.Contains(stderr.String(), "open configuration") {
+		t.Fatalf("stderr = %q, want actionable open error", stderr.String())
+	}
+}
+
 func TestRunMinimumScoreGate(t *testing.T) {
 	t.Parallel()
 	var stdout, stderr bytes.Buffer

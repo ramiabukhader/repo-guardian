@@ -44,7 +44,27 @@ Flags must precede the optional path:
 --large-file-threshold N     Large-file threshold in bytes (default: 10485760)
 --min-score N                Required score from 0 through 100 (default: 0)
 --fail-on-risk               Exit 1 when any risk is found
+--config PATH                Read policy from an explicit JSON file
 ```
+
+### Repository configuration
+
+When the scanned directory contains `.repo-guardian.json`, repo-guardian loads
+it automatically. Use `--config PATH` to select another file. Built-in defaults
+are applied first, then file values, then flags explicitly present on the command
+line. Unknown keys and invalid values are errors rather than being ignored.
+
+```json
+{
+  "format": "json",
+  "large_file_threshold": 10485760,
+  "min_score": 80,
+  "fail_on_risk": true
+}
+```
+
+An explicitly selected file must exist. The implicit repository file remains
+optional, so existing invocations are unchanged.
 
 For example, emit JSON and require a score of at least 80:
 
