@@ -26,6 +26,7 @@ type Repository struct {
 	TotalSizeBytes       int64          `json:"total_size_bytes"`
 	Categories           map[string]int `json:"categories"`
 	GitTrackingAvailable bool           `json:"git_tracking_available"`
+	ExcludedPaths        []string       `json:"excluded_paths"`
 }
 
 // Build assembles a report without adding nondeterministic timestamps.
@@ -37,6 +38,7 @@ func Build(scan scanner.Result, health audit.Result, findings []risk.Finding, tr
 	if findings == nil {
 		findings = []risk.Finding{}
 	}
+	excludedPaths := append([]string{}, scan.ExcludedPaths...)
 	return Document{
 		Version: Version,
 		Repository: Repository{
@@ -45,6 +47,7 @@ func Build(scan scanner.Result, health audit.Result, findings []risk.Finding, tr
 			TotalSizeBytes:       scan.TotalSize,
 			Categories:           categories,
 			GitTrackingAvailable: trackingAvailable,
+			ExcludedPaths:        excludedPaths,
 		},
 		Health: health,
 		Risks:  findings,

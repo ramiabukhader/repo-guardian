@@ -45,6 +45,7 @@ Flags must precede the optional path:
 --min-score N                Required score from 0 through 100 (default: 0)
 --fail-on-risk               Exit 1 when any risk is found
 --config PATH                Read policy from an explicit JSON file
+--exclude PATTERN            Exclude a relative path/glob (repeatable)
 ```
 
 ### Repository configuration
@@ -59,12 +60,19 @@ line. Unknown keys and invalid values are errors rather than being ignored.
   "format": "json",
   "large_file_threshold": 10485760,
   "min_score": 80,
-  "fail_on_risk": true
+  "fail_on_risk": true,
+  "exclude": ["generated", "fixtures/*.bin"]
 }
 ```
 
 An explicitly selected file must exist. The implicit repository file remains
 optional, so existing invocations are unchanged.
+
+Exclusion patterns use slash-normalized Go glob syntax on every operating
+system. A plain directory path excludes its entire tree. If any `--exclude`
+flags are supplied, that CLI list replaces the configuration list. Empty,
+absolute, drive-qualified, malformed, and parent-traversing patterns are
+rejected before scanning.
 
 For example, emit JSON and require a score of at least 80:
 

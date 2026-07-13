@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -152,6 +153,61 @@ func TestRunRejectsMissingExplicitConfiguration(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "open configuration") {
 		t.Fatalf("stderr = %q, want actionable open error", stderr.String())
+	}
+}
+
+func TestRunAppliesConfigExclusionsAndCLIReplacesThem(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	for _, relative := range []string{"keep.go", "config-only.txt", "cli-only.txt"} {
+		if err := os.WriteFile(filepath.Join(root, relative), []byte("fixture"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	config := `{"format":"json","exclude":["config-only.txt"]}`
+	if err := os.WriteFile(filepath.Join(root, defaultConfigName), []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{root}, &stdout, &stderr); code != 0 {
+		t.Fatalf("config-only Run() code = %d, stderr = %q", code, stderr.String())
+	}
+	var document report.Document
+	if err := json.Unmarshal(stdout.Bytes(), &document); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(document.Repository.ExcludedPaths, []string{"config-only.txt"}) {
+		t.Fatalf("config ExcludedPaths = %#v", document.Repository.ExcludedPaths)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run([]string{"--exclude", "cli-only.txt", "--format", "json", root}, &stdout, &stderr); code != 0 {
+		t.Fatalf("Run() code = %d, stderr = %q", code, stderr.String())
+	}
+	document = report.Document{}
+	if err := json.Unmarshal(stdout.Bytes(), &document); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"cli-only.txt"}
+	if !reflect.DeepEqual(document.Repository.ExcludedPaths, want) {
+		t.Fatalf("ExcludedPaths = %#v, want CLI replacement %#v", document.Repository.ExcludedPaths, want)
+	}
+}
+
+func TestRunRejectsUnsafeConfigExclusion(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, defaultConfigName), []byte(`{"exclude":["../outside"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{root}, &stdout, &stderr); code != 2 {
+		t.Fatalf("Run() code = %d, want 2", code)
+	}
+	if !strings.Contains(stderr.String(), "must not traverse") {
+		t.Fatalf("stderr = %q", stderr.String())
 	}
 }
 

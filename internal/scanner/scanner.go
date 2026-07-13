@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -52,10 +53,29 @@ type Result struct {
 	Files           []File
 	CountByCategory map[Category]int
 	TotalSize       int64
+	ExcludedPaths   []string
+}
+
+// Options controls repository-relative scan exclusions.
+type Options struct {
+	ExcludePatterns []string
 }
 
 // Scan recursively scans root while excluding dependency and VCS directories.
 func Scan(root string) (Result, error) {
+	return ScanWithOptions(root, Options{})
+}
+
+// ScanWithOptions scans root while applying validated portable exclusions.
+func ScanWithOptions(root string, options Options) (Result, error) {
+	patterns := make([]string, 0, len(options.ExcludePatterns))
+	for _, patternValue := range options.ExcludePatterns {
+		normalized, err := NormalizeExcludePattern(patternValue)
+		if err != nil {
+			return Result{}, err
+		}
+		patterns = append(patterns, normalized)
+	}
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
 		return Result{}, fmt.Errorf("resolve scan root: %w", err)
@@ -72,6 +92,7 @@ func Scan(root string) (Result, error) {
 	result := Result{
 		Root:            absRoot,
 		CountByCategory: make(map[Category]int),
+		ExcludedPaths:   make([]string, 0),
 	}
 	err = filepath.WalkDir(absRoot, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -83,6 +104,15 @@ func Scan(root string) (Result, error) {
 
 		if entry.IsDir() {
 			if _, ignored := defaultIgnoredDirectories[strings.ToLower(entry.Name())]; ignored {
+				return filepath.SkipDir
+			}
+			relativePath, err := filepath.Rel(absRoot, path)
+			if err != nil {
+				return fmt.Errorf("make path relative: %w", err)
+			}
+			relativePath = filepath.ToSlash(relativePath)
+			if matchesExclusion(relativePath, patterns) {
+				result.ExcludedPaths = append(result.ExcludedPaths, relativePath)
 				return filepath.SkipDir
 			}
 			return nil
@@ -103,6 +133,10 @@ func Scan(root string) (Result, error) {
 			return fmt.Errorf("make path relative: %w", err)
 		}
 		relativePath = filepath.ToSlash(relativePath)
+		if matchesExclusion(relativePath, patterns) {
+			result.ExcludedPaths = append(result.ExcludedPaths, relativePath)
+			return nil
+		}
 		category := Classify(relativePath)
 		result.Files = append(result.Files, File{
 			Path:     relativePath,
@@ -120,7 +154,42 @@ func Scan(root string) (Result, error) {
 	sort.Slice(result.Files, func(i, j int) bool {
 		return result.Files[i].Path < result.Files[j].Path
 	})
+	sort.Strings(result.ExcludedPaths)
 	return result, nil
+}
+
+// NormalizeExcludePattern validates a repository-relative portable glob.
+func NormalizeExcludePattern(patternValue string) (string, error) {
+	normalized := strings.ReplaceAll(strings.TrimSpace(patternValue), "\\", "/")
+	if normalized == "" {
+		return "", fmt.Errorf("exclude pattern must not be empty")
+	}
+	if filepath.IsAbs(patternValue) || path.IsAbs(normalized) || filepath.VolumeName(patternValue) != "" || hasWindowsDrive(normalized) {
+		return "", fmt.Errorf("exclude pattern must be repository-relative: %q", patternValue)
+	}
+	normalized = strings.TrimPrefix(normalized, "./")
+	cleaned := path.Clean(normalized)
+	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return "", fmt.Errorf("exclude pattern must not traverse outside the scan root: %q", patternValue)
+	}
+	if _, err := path.Match(cleaned, "validation"); err != nil {
+		return "", fmt.Errorf("invalid exclude pattern %q: %w", patternValue, err)
+	}
+	return cleaned, nil
+}
+
+func matchesExclusion(relative string, patterns []string) bool {
+	for _, patternValue := range patterns {
+		matched, _ := path.Match(patternValue, relative)
+		if matched || (!strings.ContainsAny(patternValue, "*?[") && strings.HasPrefix(relative, patternValue+"/")) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasWindowsDrive(value string) bool {
+	return len(value) >= 2 && value[1] == ':' && ((value[0] >= 'a' && value[0] <= 'z') || (value[0] >= 'A' && value[0] <= 'Z'))
 }
 
 // Classify assigns a category using only a file's relative path.
