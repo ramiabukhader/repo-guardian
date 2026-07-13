@@ -54,11 +54,30 @@ type Result struct {
 	CountByCategory map[Category]int
 	TotalSize       int64
 	ExcludedPaths   []string
+	Errors          []ScanIssue
+	Complete        bool
+}
+
+// ScanIssue describes one repository-relative path that could not be inspected.
+type ScanIssue struct {
+	Kind    string
+	Path    string
+	Message string
 }
 
 // Options controls repository-relative scan exclusions.
 type Options struct {
 	ExcludePatterns []string
+	AllowPartial    bool
+}
+
+// IncompleteError indicates that accessible paths were scanned but coverage was incomplete.
+type IncompleteError struct {
+	Count int
+}
+
+func (error IncompleteError) Error() string {
+	return fmt.Sprintf("audit incomplete: %d path error(s)", error.Count)
 }
 
 // Scan recursively scans root while excluding dependency and VCS directories.
@@ -68,6 +87,12 @@ func Scan(root string) (Result, error) {
 
 // ScanWithOptions scans root while applying validated portable exclusions.
 func ScanWithOptions(root string, options Options) (Result, error) {
+	return scanWithWalker(root, options, filepath.WalkDir)
+}
+
+type walkDirFunc func(string, fs.WalkDirFunc) error
+
+func scanWithWalker(root string, options Options, walk walkDirFunc) (Result, error) {
 	patterns := make([]string, 0, len(options.ExcludePatterns))
 	for _, patternValue := range options.ExcludePatterns {
 		normalized, err := NormalizeExcludePattern(patternValue)
@@ -93,10 +118,19 @@ func ScanWithOptions(root string, options Options) (Result, error) {
 		Root:            absRoot,
 		CountByCategory: make(map[Category]int),
 		ExcludedPaths:   make([]string, 0),
+		Errors:          make([]ScanIssue, 0),
+		Complete:        true,
 	}
-	err = filepath.WalkDir(absRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+	err = walk(absRoot, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			return walkErr
+			if path == absRoot {
+				return walkErr
+			}
+			result.Errors = append(result.Errors, ScanIssue{
+				Kind: "walk-error", Path: safeRelativePath(absRoot, path), Message: "cannot access path",
+			})
+			result.Complete = false
+			return nil
 		}
 		if path == absRoot {
 			return nil
@@ -123,7 +157,11 @@ func ScanWithOptions(root string, options Options) (Result, error) {
 
 		info, err := entry.Info()
 		if err != nil {
-			return fmt.Errorf("inspect %s: %w", path, err)
+			result.Errors = append(result.Errors, ScanIssue{
+				Kind: "metadata-error", Path: safeRelativePath(absRoot, path), Message: "cannot inspect file metadata",
+			})
+			result.Complete = false
+			return nil
 		}
 		if !info.Mode().IsRegular() {
 			return nil
@@ -155,7 +193,24 @@ func ScanWithOptions(root string, options Options) (Result, error) {
 		return result.Files[i].Path < result.Files[j].Path
 	})
 	sort.Strings(result.ExcludedPaths)
+	sort.Slice(result.Errors, func(i, j int) bool {
+		if result.Errors[i].Path == result.Errors[j].Path {
+			return result.Errors[i].Kind < result.Errors[j].Kind
+		}
+		return result.Errors[i].Path < result.Errors[j].Path
+	})
+	if !result.Complete && !options.AllowPartial {
+		return result, IncompleteError{Count: len(result.Errors)}
+	}
 	return result, nil
+}
+
+func safeRelativePath(root, filePath string) string {
+	relative, err := filepath.Rel(root, filePath)
+	if err != nil || relative == "." || relative == ".." || strings.HasPrefix(filepath.ToSlash(relative), "../") {
+		return "<unavailable>"
+	}
+	return filepath.ToSlash(relative)
 }
 
 // NormalizeExcludePattern validates a repository-relative portable glob.

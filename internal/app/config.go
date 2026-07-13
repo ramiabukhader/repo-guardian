@@ -16,6 +16,7 @@ type fileConfig struct {
 	MinimumScore       *int      `json:"min_score"`
 	FailOnRisk         *bool     `json:"fail_on_risk"`
 	Exclude            *[]string `json:"exclude"`
+	BestEffort         *bool     `json:"best_effort"`
 }
 
 func loadConfig(path string, required bool) (fileConfig, bool, error) {

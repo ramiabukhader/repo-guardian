@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/ramiabukhader/repo-guardian/internal/report"
+	"github.com/ramiabukhader/repo-guardian/internal/scanner"
 )
 
 func TestRunScansProvidedDirectory(t *testing.T) {
@@ -208,6 +209,76 @@ func TestRunRejectsUnsafeConfigExclusion(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "must not traverse") {
 		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
+func TestRunRequiresExplicitBestEffortForIncompleteAudit(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	synthetic := func(scanRoot string, options scanner.Options) (scanner.Result, error) {
+		result := scanner.Result{
+			Root: scanRoot, CountByCategory: map[scanner.Category]int{},
+			Files: []scanner.File{}, ExcludedPaths: []string{}, Complete: false,
+			Errors: []scanner.ScanIssue{{Kind: "walk-error", Path: "bad\x1b[31m", Message: "cannot access path"}},
+		}
+		if !options.AllowPartial {
+			return result, scanner.IncompleteError{Count: 1}
+		}
+		return result, nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := runWithScanner([]string{"--format", "json", root}, &stdout, &stderr, synthetic); code != 2 {
+		t.Fatalf("conservative code = %d, want 2", code)
+	}
+	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "audit incomplete") {
+		t.Fatalf("conservative stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := runWithScanner([]string{"--best-effort", "--format", "json", root}, &stdout, &stderr, synthetic); code != 1 {
+		t.Fatalf("best-effort code = %d, want 1; stderr=%q", code, stderr.String())
+	}
+	var document report.Document
+	if err := json.Unmarshal(stdout.Bytes(), &document); err != nil {
+		t.Fatal(err)
+	}
+	if document.Repository.Complete || len(document.Repository.Errors) != 1 || stderr.Len() != 0 {
+		t.Fatalf("best-effort document=%#v stderr=%q", document.Repository, stderr.String())
+	}
+	if strings.ContainsRune(stdout.String(), '\x1b') {
+		t.Fatalf("JSON emitted raw terminal escape: %q", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := runWithScanner([]string{"--best-effort", root}, &stdout, &stderr, synthetic); code != 1 {
+		t.Fatalf("human best-effort code = %d, want 1", code)
+	}
+	if !strings.Contains(stdout.String(), "Audit complete: false") || !strings.Contains(stdout.String(), `bad\x1b[31m`) {
+		t.Fatalf("human incomplete report = %q", stdout.String())
+	}
+	if strings.ContainsRune(stdout.String(), '\x1b') || stderr.Len() != 0 {
+		t.Fatalf("unsafe human stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+func TestRunLoadsBestEffortFromConfiguration(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, defaultConfigName), []byte(`{"best_effort":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	synthetic := func(scanRoot string, options scanner.Options) (scanner.Result, error) {
+		if !options.AllowPartial {
+			t.Fatal("configuration did not enable best effort")
+		}
+		return scanner.Result{Root: scanRoot, CountByCategory: map[scanner.Category]int{}, Complete: false, Errors: []scanner.ScanIssue{{Kind: "walk-error", Path: "bad", Message: "cannot access path"}}}, nil
+	}
+	var stdout, stderr bytes.Buffer
+	if code := runWithScanner([]string{root}, &stdout, &stderr, synthetic); code != 1 {
+		t.Fatalf("code = %d, want incomplete policy exit 1; stderr=%q", code, stderr.String())
 	}
 }
 
