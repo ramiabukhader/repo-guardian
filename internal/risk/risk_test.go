@@ -1,6 +1,7 @@
 package risk
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -79,6 +80,19 @@ func TestDiscoverTrackedOutsideGitRepository(t *testing.T) {
 	}
 	if available || len(tracked) != 0 {
 		t.Fatalf("DiscoverTracked() = %#v, %v, want empty and unavailable", tracked, available)
+	}
+}
+
+func TestExpectedProbeFailure(t *testing.T) {
+	t.Parallel()
+	if !isExpectedProbeFailure(exec.ErrNotFound, nil) {
+		t.Fatal("missing Git executable should be an expected probe failure")
+	}
+	if !isExpectedProbeFailure(errors.New("exit status 128"), []byte("fatal: not a git repository")) {
+		t.Fatal("non-repository response should be an expected probe failure")
+	}
+	if isExpectedProbeFailure(errors.New("exit status 128"), []byte("fatal: detected dubious ownership")) {
+		t.Fatal("unexpected Git failure must not be treated as tracking unavailable")
 	}
 }
 

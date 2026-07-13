@@ -76,21 +76,25 @@ func Detect(scan scanner.Result, tracked map[string]struct{}, options Options) [
 // when root is not a worktree or the Git executable is unavailable.
 func DiscoverTracked(root string) (tracked map[string]struct{}, available bool, err error) {
 	probe := exec.Command("git", "-C", root, "rev-parse", "--is-inside-work-tree")
-	if output, probeErr := probe.Output(); probeErr != nil || strings.TrimSpace(string(output)) != "true" {
-		if probeErr != nil && !isUnavailableOrNotRepository(probeErr) {
-			return nil, false, fmt.Errorf("inspect Git worktree: %w", probeErr)
+	output, probeErr := probe.CombinedOutput()
+	if probeErr != nil {
+		if !isExpectedProbeFailure(probeErr, output) {
+			return nil, false, fmt.Errorf("inspect Git worktree: %w: %s", probeErr, strings.TrimSpace(string(output)))
 		}
+		return map[string]struct{}{}, false, nil
+	}
+	if strings.TrimSpace(string(output)) != "true" {
 		return map[string]struct{}{}, false, nil
 	}
 
 	command := exec.Command("git", "-C", root, "ls-files", "--cached", "-z")
-	output, err := command.Output()
+	trackedOutput, err := command.Output()
 	if err != nil {
 		return nil, true, fmt.Errorf("list tracked files: %w", err)
 	}
 
 	tracked = make(map[string]struct{})
-	for _, item := range bytes.Split(output, []byte{0}) {
+	for _, item := range bytes.Split(trackedOutput, []byte{0}) {
 		if len(item) == 0 {
 			continue
 		}
@@ -99,9 +103,8 @@ func DiscoverTracked(root string) (tracked map[string]struct{}, available bool, 
 	return tracked, true, nil
 }
 
-func isUnavailableOrNotRepository(err error) bool {
-	var exitError *exec.ExitError
-	return errors.Is(err, exec.ErrNotFound) || errors.As(err, &exitError)
+func isExpectedProbeFailure(err error, output []byte) bool {
+	return errors.Is(err, exec.ErrNotFound) || strings.Contains(strings.ToLower(string(output)), "not a git repository")
 }
 
 func isEnvironmentFile(filePath string) bool {
@@ -139,7 +142,8 @@ func isSecretFile(filePath string) bool {
 }
 
 func isBuildOutput(filePath string) bool {
-	for _, segment := range strings.Split(strings.ToLower(filePath), "/")[:len(strings.Split(filePath, "/"))-1] {
+	segments := strings.Split(strings.ToLower(filePath), "/")
+	for _, segment := range segments[:len(segments)-1] {
 		switch segment {
 		case "bin", "build", "coverage", "dist", "out", "target":
 			return true
