@@ -46,6 +46,7 @@ Flags must precede the optional path:
 --fail-on-risk               Exit 1 when any risk is found
 --config PATH                Read policy from an explicit JSON file
 --exclude PATTERN            Exclude a relative path/glob (repeatable)
+--best-effort                Emit incomplete audits, then exit 1
 ```
 
 ### Repository configuration
@@ -61,7 +62,8 @@ line. Unknown keys and invalid values are errors rather than being ignored.
   "large_file_threshold": 10485760,
   "min_score": 80,
   "fail_on_risk": true,
-  "exclude": ["generated", "fixtures/*.bin"]
+  "exclude": ["generated", "fixtures/*.bin"],
+  "best_effort": false
 }
 ```
 
@@ -73,6 +75,12 @@ system. A plain directory path excludes its entire tree. If any `--exclude`
 flags are supplied, that CLI list replaces the configuration list. Empty,
 absolute, drive-qualified, malformed, and parent-traversing patterns are
 rejected before scanning.
+
+By default, an inaccessible or disappearing path is an execution failure (exit
+2) and no report is emitted. `--best-effort` (or `best_effort` in config)
+emits accessible-path results with `repository.complete=false` and structured
+`repository.errors`, then exits 1 so automation cannot treat incomplete
+coverage as a clean audit. Error paths are repository-relative and escaped.
 
 For example, emit JSON and require a score of at least 80:
 

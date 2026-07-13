@@ -17,6 +17,7 @@ func TestBuildProducesVersionedJSON(t *testing.T) {
 		Files:           []scanner.File{{Path: "README.md", Size: 7, Category: scanner.CategoryDocumentation}},
 		CountByCategory: map[scanner.Category]int{scanner.CategoryDocumentation: 1},
 		TotalSize:       7,
+		Complete:        true,
 	}
 	health := audit.Result{Checks: []audit.Check{{ID: audit.CheckREADME, Label: "README", Passed: true}}, Passed: 1, Total: 8}
 	document := Build(scan, health, []risk.Finding{{Kind: risk.KindSecretFile, Path: "bad\x1b.pem"}}, true)
@@ -28,7 +29,7 @@ func TestBuildProducesVersionedJSON(t *testing.T) {
 	if strings.ContainsRune(string(encoded), '\x1b') {
 		t.Fatalf("JSON contains raw escape character: %q", encoded)
 	}
-	for _, fragment := range []string{`"version":"1"`, `"files_scanned":1`, `"git_tracking_available":true`, `"score"`} {
+	for _, fragment := range []string{`"version":"1"`, `"files_scanned":1`, `"git_tracking_available":true`, `"complete":true`, `"errors":[]`, `"score"`} {
 		if !strings.Contains(string(encoded), fragment) {
 			t.Fatalf("JSON %q missing %q", encoded, fragment)
 		}

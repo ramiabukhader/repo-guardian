@@ -20,6 +20,10 @@ import (
 
 // Run executes the CLI and returns a documented process exit code.
 func Run(args []string, stdout, stderr io.Writer) int {
+	return runWithScanner(args, stdout, stderr, scanner.ScanWithOptions)
+}
+
+func runWithScanner(args []string, stdout, stderr io.Writer, scanRepository func(string, scanner.Options) (scanner.Result, error)) int {
 	flags := flag.NewFlagSet("repo-guardian", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	format := flags.String("format", "human", "output format: human or json")
@@ -29,6 +33,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	configPath := flags.String("config", "", "path to a JSON configuration file")
 	var exclusions excludeValues
 	flags.Var(&exclusions, "exclude", "repository-relative exclusion pattern (repeatable)")
+	bestEffort := flags.Bool("best-effort", false, "emit partial results for inaccessible paths and exit 1")
 	flags.Usage = func() {
 		fmt.Fprintln(stderr, "usage: repo-guardian [flags] [path]")
 		flags.PrintDefaults()
@@ -76,6 +81,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		if config.Exclude != nil && !explicit["exclude"] {
 			exclusions = append(excludeValues(nil), (*config.Exclude)...)
 		}
+		if config.BestEffort != nil && !explicit["best-effort"] {
+			*bestEffort = *config.BestEffort
+		}
 	}
 	if *format != "human" && *format != "json" {
 		fmt.Fprintf(stderr, "repo-guardian: unsupported format %q\n", *format)
@@ -98,7 +106,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		exclusions[index] = normalized
 	}
 
-	scan, err := scanner.ScanWithOptions(root, scanner.Options{ExcludePatterns: exclusions})
+	scan, err := scanRepository(root, scanner.Options{ExcludePatterns: exclusions, AllowPartial: *bestEffort})
 	if err != nil {
 		fmt.Fprintf(stderr, "repo-guardian: %v\n", err)
 		return 2
@@ -123,7 +131,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		writeHuman(stdout, scan, document)
 	}
 
-	if document.Score.Total < *minimumScore || (*failOnRisk && len(document.Risks) > 0) {
+	if !document.Repository.Complete || document.Score.Total < *minimumScore || (*failOnRisk && len(document.Risks) > 0) {
 		return 1
 	}
 	return 0
@@ -136,6 +144,10 @@ func writeHuman(output io.Writer, scan scanner.Result, document report.Document)
 	fmt.Fprintf(output, "Excluded paths: %d\n", len(scan.ExcludedPaths))
 	for _, excluded := range scan.ExcludedPaths {
 		fmt.Fprintf(output, "  excluded: %s\n", strconv.Quote(excluded))
+	}
+	fmt.Fprintf(output, "Audit complete: %t\n", scan.Complete)
+	for _, issue := range scan.Errors {
+		fmt.Fprintf(output, "  [%s] %s: %s\n", issue.Kind, strconv.Quote(issue.Path), issue.Message)
 	}
 
 	categories := make([]string, 0, len(scan.CountByCategory))

@@ -1,10 +1,13 @@
 package scanner
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -125,6 +128,46 @@ func TestNormalizeExcludePatternRejectsUnsafePaths(t *testing.T) {
 		if _, err := NormalizeExcludePattern(patternValue); err == nil {
 			t.Errorf("NormalizeExcludePattern(%q) error = nil", patternValue)
 		}
+	}
+}
+
+func TestScanWithWalkerReturnsSanitizedPartialResults(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeFixture(t, root, "README.md", "fixture")
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	walker := func(walkRoot string, callback fs.WalkDirFunc) error {
+		if err := callback(walkRoot, nil, nil); err != nil {
+			return err
+		}
+		if err := callback(filepath.Join(walkRoot, entries[0].Name()), entries[0], nil); err != nil {
+			return err
+		}
+		return callback(filepath.Join(walkRoot, "denied\x1b[31m"), nil, errors.New("permission denied with absolute path "+walkRoot))
+	}
+
+	partial, err := scanWithWalker(root, Options{AllowPartial: true}, walker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if partial.Complete || len(partial.Files) != 1 || len(partial.Errors) != 1 {
+		t.Fatalf("partial result = %#v", partial)
+	}
+	want := ScanIssue{Kind: "walk-error", Path: "denied\x1b[31m", Message: "cannot access path"}
+	if !reflect.DeepEqual(partial.Errors[0], want) {
+		t.Fatalf("Errors = %#v, want %#v", partial.Errors, want)
+	}
+	if strings.Contains(partial.Errors[0].Message, root) {
+		t.Fatalf("error leaked root: %#v", partial.Errors[0])
+	}
+
+	conservative, err := scanWithWalker(root, Options{}, walker)
+	var incomplete IncompleteError
+	if !errors.As(err, &incomplete) || incomplete.Count != 1 || conservative.Complete {
+		t.Fatalf("conservative result = %#v, err = %v", conservative, err)
 	}
 }
 
