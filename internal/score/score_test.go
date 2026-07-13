@@ -44,3 +44,15 @@ func TestCalculateDeductsRiskKindOnlyOnce(t *testing.T) {
 		t.Fatalf("RiskHygienePoints = %d, want 20", got.RiskHygienePoints)
 	}
 }
+
+func TestCalculateAwardsHealthCheckOnlyOnce(t *testing.T) {
+	t.Parallel()
+	health := audit.Result{Checks: []audit.Check{
+		{ID: audit.CheckREADME, Passed: true},
+		{ID: audit.CheckREADME, Passed: true},
+	}}
+	got := Calculate(health, nil)
+	if got.HealthPoints != 15 || got.Total != 45 {
+		t.Fatalf("Calculate() = %#v, want duplicate README awarded once", got)
+	}
+}

@@ -69,6 +69,30 @@ func TestRunValidatesConfigurationFlags(t *testing.T) {
 	}
 }
 
+func TestRunMinimumScoreGate(t *testing.T) {
+	t.Parallel()
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--min-score", "31", t.TempDir()}, &stdout, &stderr); code != 1 {
+		t.Fatalf("Run() code = %d, want score-gate failure 1; output = %q, stderr = %q", code, stdout.String(), stderr.String())
+	}
+}
+
+func TestRunCustomLargeFileThreshold(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "archive.bin"), []byte("123"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"--large-file-threshold", "3", "--fail-on-risk", root}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("Run() code = %d, want risk-gate failure 1; stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "[large-file]") {
+		t.Fatalf("large-file finding missing: %q", stdout.String())
+	}
+}
+
 func TestRunRejectsTooManyArguments(t *testing.T) {
 	t.Parallel()
 	var stdout, stderr bytes.Buffer

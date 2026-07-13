@@ -37,10 +37,17 @@ type Result struct {
 // Calculate applies fixed check weights and per-kind risk-hygiene deductions.
 func Calculate(health audit.Result, findings []risk.Finding) Result {
 	result := Result{Maximum: Max}
+	awardedChecks := make(map[string]struct{})
 	for _, check := range health.Checks {
-		if check.Passed {
-			result.HealthPoints += healthWeights[check.ID]
+		weight, defined := healthWeights[check.ID]
+		if !check.Passed || !defined {
+			continue
 		}
+		if _, awarded := awardedChecks[check.ID]; awarded {
+			continue
+		}
+		awardedChecks[check.ID] = struct{}{}
+		result.HealthPoints += weight
 	}
 
 	presentKinds := make(map[risk.Kind]struct{})
