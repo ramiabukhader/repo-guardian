@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,6 +26,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	largeFileThreshold := flags.Int64("large-file-threshold", risk.DefaultLargeFileThreshold, "large-file threshold in bytes")
 	minimumScore := flags.Int("min-score", 0, "minimum acceptable health score (0-100)")
 	failOnRisk := flags.Bool("fail-on-risk", false, "exit 1 when any risk is found")
+	configPath := flags.String("config", "", "path to a JSON configuration file")
 	flags.Usage = func() {
 		fmt.Fprintln(stderr, "usage: repo-guardian [flags] [path]")
 		flags.PrintDefaults()
@@ -39,6 +41,37 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		flags.Usage()
 		return 2
 	}
+
+	root := "."
+	if flags.NArg() == 1 {
+		root = flags.Arg(0)
+	}
+	explicit := make(map[string]bool)
+	flags.Visit(func(item *flag.Flag) { explicit[item.Name] = true })
+	resolvedConfigPath := *configPath
+	configRequired := explicit["config"]
+	if !configRequired {
+		resolvedConfigPath = filepath.Join(root, defaultConfigName)
+	}
+	config, found, err := loadConfig(resolvedConfigPath, configRequired)
+	if err != nil {
+		fmt.Fprintf(stderr, "repo-guardian: %v\n", err)
+		return 2
+	}
+	if found {
+		if config.Format != nil && !explicit["format"] {
+			*format = *config.Format
+		}
+		if config.LargeFileThreshold != nil && !explicit["large-file-threshold"] {
+			*largeFileThreshold = *config.LargeFileThreshold
+		}
+		if config.MinimumScore != nil && !explicit["min-score"] {
+			*minimumScore = *config.MinimumScore
+		}
+		if config.FailOnRisk != nil && !explicit["fail-on-risk"] {
+			*failOnRisk = *config.FailOnRisk
+		}
+	}
 	if *format != "human" && *format != "json" {
 		fmt.Fprintf(stderr, "repo-guardian: unsupported format %q\n", *format)
 		return 2
@@ -52,10 +85,6 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	root := "."
-	if flags.NArg() == 1 {
-		root = flags.Arg(0)
-	}
 	scan, err := scanner.Scan(root)
 	if err != nil {
 		fmt.Fprintf(stderr, "repo-guardian: %v\n", err)
