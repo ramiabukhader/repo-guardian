@@ -95,6 +95,9 @@ func Scan(root string) (Result, error) {
 		if err != nil {
 			return fmt.Errorf("inspect %s: %w", path, err)
 		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
 		relativePath, err := filepath.Rel(absRoot, path)
 		if err != nil {
 			return fmt.Errorf("make path relative: %w", err)
