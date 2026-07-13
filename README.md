@@ -58,7 +58,8 @@ repo-guardian --format json --min-score 80 /path/to/project
 Repository: "/home/alex/project"
 Files scanned: 42
 Total size: 183420 bytes
-  configuration: 6
+  ci: 1
+  configuration: 5
   documentation: 5
   source: 21
   test: 10
