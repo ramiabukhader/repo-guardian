@@ -27,10 +27,10 @@ const (
 
 // Finding describes metadata about a risk. It never contains file content.
 type Finding struct {
-	Kind    Kind
-	Path    string
-	Size    int64
-	Tracked bool
+	Kind    Kind   `json:"kind"`
+	Path    string `json:"path"`
+	Size    int64  `json:"size_bytes,omitempty"`
+	Tracked bool   `json:"tracked"`
 }
 
 // Options configures risk detection.
