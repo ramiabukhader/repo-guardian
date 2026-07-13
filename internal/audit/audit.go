@@ -22,17 +22,17 @@ const (
 
 // Check is one auditable repository-health requirement.
 type Check struct {
-	ID       string
-	Label    string
-	Passed   bool
-	Evidence []string
+	ID       string   `json:"id"`
+	Label    string   `json:"label"`
+	Passed   bool     `json:"passed"`
+	Evidence []string `json:"evidence,omitempty"`
 }
 
 // Result contains checks and aggregate counts.
 type Result struct {
-	Checks []Check
-	Passed int
-	Total  int
+	Checks []Check `json:"checks"`
+	Passed int     `json:"passed"`
+	Total  int     `json:"total"`
 }
 
 type checkDefinition struct {
