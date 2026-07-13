@@ -1,0 +1,31 @@
+name: Feature request
+description: Propose a substantive offline repository-health capability.
+title: "feat: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Repository-health problem
+      description: Describe the user need rather than only a preferred implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria and edge cases
+    validations:
+      required: true
+  - type: textarea
+    id: security
+    attributes:
+      label: Security and privacy implications
+      description: Explain how the proposal preserves offline, metadata-only auditing.
+    validations:
+      required: true
