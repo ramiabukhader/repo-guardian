@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
+	"strings"
 
+	"github.com/ramiabukhader/repo-guardian/internal/audit"
 	"github.com/ramiabukhader/repo-guardian/internal/scanner"
 )
 
@@ -26,7 +29,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	fmt.Fprintf(stdout, "Repository: %s\n", result.Root)
+	fmt.Fprintf(stdout, "Repository: %q\n", result.Root)
 	fmt.Fprintf(stdout, "Files scanned: %d\n", len(result.Files))
 	fmt.Fprintf(stdout, "Total size: %d bytes\n", result.TotalSize)
 
@@ -38,5 +41,27 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	for _, category := range categories {
 		fmt.Fprintf(stdout, "  %s: %d\n", category, result.CountByCategory[scanner.Category(category)])
 	}
+
+	health := audit.Evaluate(result)
+	fmt.Fprintf(stdout, "Health checks: %d/%d\n", health.Passed, health.Total)
+	for _, check := range health.Checks {
+		status := "MISSING"
+		if check.Passed {
+			status = "PASS"
+		}
+		fmt.Fprintf(stdout, "  [%s] %s", status, check.Label)
+		if len(check.Evidence) > 0 {
+			fmt.Fprintf(stdout, ": %s", quotePaths(check.Evidence))
+		}
+		fmt.Fprintln(stdout)
+	}
 	return 0
+}
+
+func quotePaths(paths []string) string {
+	quoted := make([]string, len(paths))
+	for i, filePath := range paths {
+		quoted[i] = strconv.Quote(filePath)
+	}
+	return strings.Join(quoted, ", ")
 }
